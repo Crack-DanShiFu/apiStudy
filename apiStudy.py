@@ -1,89 +1,44 @@
-import json
-from lxml import etree
-import execjs
-import requests
-
-
+import threading
+from queue import Queue
+from proxy import get_proxy
 # 获取一个城市所有的历史数据  by lczCrack  qq1124241615
-
 # 加密参数
-def encryption_params(city, date_time, ctx):
-    method = 'GETDAYDATA'
-    js = 'getEncryptedData("{0}", "{1}", "{2}")'.format(method, city, date_time)
-    return ctx.eval(js)
+from utils import *
 
 
-# 解码response对象
-def decode_info(info, ctx):
-    js = 'decodeData("{0}")'.format(info)
-    data = ctx.eval(js)
-    data = json.loads(data)
-    return data
+# 爬虫的线程对象
+class AQIThread(threading.Thread):
+    def __init__(self, threadID, city_queue):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.city_queue = city_queue
+        self.singal = threading.Event()
+        self.singal.set()
 
+    def run(self):
+        while True:
+            if self.city_queue.empty():
+                break
+            else:
+                ci = self.city_queue.get()
+                result = get_year_info_by_city(year='2018', city=ci)
+                print(result)
+                # write_excel(result, ci)
 
-def get_response(params):
-    url = 'https://www.aqistudy.cn/historydata/api/historyapi.php'
-    headers = {
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Encoding': 'gzip, deflate',
-        'Accept-Language': 'zh-CN,zh;q=0.8',
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3578.80 Safari/537.36'
-    }
-    data = {
-        'hd': params
-    }
-    html_info = requests.post(url, data=data)
-    return html_info.text
+    def pause(self):
+        self.log_ctrl.AppendText("pause\n")
+        self.singal.clear()
 
+    def restart(self):
+        self.log_ctrl.AppendText("continue\n")
+        self.singal.set()
 
-def get_city():
-    url = 'https://www.aqistudy.cn/historydata/'
-    html_info = requests.get(url)
-    html = etree.HTML(html_info.text)  # 初始化生成一个XPath解析对象
-    items = html.xpath('//div[@class="all"]//a/text()')
-    return items
-
-
-def get_all_info_by_city(city):
-    years = [str(i + 2013) for i in range(7)]
-    month = [str(i if i > 9 else '0' + str(i)) for i in range(1, 13)]
-    node = execjs.get()
-    ctx = node.compile(open('decrypt.js', encoding='utf-8').read())
-    for y in years:
-        for m in month:
-            date_time = y + m  # 201805
-            html_info = get_response(encryption_params(city, date_time, ctx))
-            item = decode_info(html_info, ctx)
-            for i in item['result']['data']['items']:
-                print(i)
-
-
-# city = ['阿坝州', '安康', '阿克苏地区', '阿里地区', '阿拉善盟', '阿勒泰地区', '安庆', '安顺', '鞍山', '克孜勒苏州', '安阳', '蚌埠', '白城', '保定', '北海', '宝鸡',
-#         '北京', '毕节', '博州', '白山', '百色', '保山', '白沙', '包头', '保亭', '本溪', '巴彦淖尔', '白银', '巴中', '滨州', '亳州', '长春', '昌都', '常德',
-#         '成都', '承德', '赤峰', '昌吉州', '五家渠', '昌江', '澄迈', '重庆', '长沙', '常熟', '楚雄州', '朝阳', '沧州', '长治', '常州', '潮州', '郴州', '池州',
-#         '崇左', '滁州', '定安', '丹东', '东方', '东莞', '德宏州', '大理州', '大连', '大庆', '大同', '定西', '大兴安岭地区', '德阳', '东营', '黔南州', '达州',
-#         '德州', '儋州', '鄂尔多斯', '恩施州', '鄂州', '防城港', '佛山', '抚顺', '阜新', '阜阳', '富阳', '抚州', '福州', '广安', '贵港', '桂林', '果洛州',
-#         '甘南州', '固原', '广元', '贵阳', '甘孜州', '赣州', '广州', '淮安', '海北州', '鹤壁', '淮北', '河池', '海东地区', '邯郸', '哈尔滨', '合肥', '鹤岗',
-#         '黄冈', '黑河', '红河州', '怀化', '呼和浩特', '海口', '呼伦贝尔', '葫芦岛', '哈密地区', '海门', '海南州', '淮南', '黄南州', '衡水', '黄山', '黄石',
-#         '和田地区', '海西州', '河源', '衡阳', '汉中', '杭州', '菏泽', '贺州', '湖州', '惠州', '吉安', '金昌', '晋城', '景德镇', '金华', '西双版纳州', '九江',
-#         '吉林', '即墨', '江门', '荆门', '佳木斯', '济南', '济宁', '胶南', '酒泉', '句容', '湘西州', '金坛', '鸡西', '嘉兴', '江阴', '揭阳', '济源', '嘉峪关',
-#         '胶州', '焦作', '锦州', '晋中', '荆州', '库尔勒', '开封', '黔东南州', '克拉玛依', '昆明', '喀什地区', '昆山', '临安', '六安', '来宾', '聊城', '临沧',
-#         '娄底', '乐东', '廊坊', '临汾', '临高', '漯河', '丽江', '吕梁', '陇南', '六盘水', '拉萨', '乐山', '丽水', '凉山州', '陵水', '莱芜', '莱西', '临夏州',
-#         '溧阳', '辽阳', '辽源', '临沂', '龙岩', '洛阳', '连云港', '莱州', '兰州', '林芝', '柳州', '泸州', '马鞍山', '牡丹江', '茂名', '眉山', '绵阳', '梅州',
-#         '宁波', '南昌', '南充', '宁德', '内江', '南京', '怒江州', '南宁', '南平', '那曲地区', '南通', '南阳', '平度', '平顶山', '普洱', '盘锦', '蓬莱', '平凉',
-#         '莆田', '萍乡', '濮阳', '攀枝花', '青岛', '琼海', '秦皇岛', '曲靖', '齐齐哈尔', '七台河', '黔西南州', '清远', '庆阳', '钦州', '衢州', '泉州', '琼中',
-#         '荣成', '日喀则', '乳山', '日照', '韶关', '寿光', '上海', '绥化', '石河子', '石家庄', '商洛', '三明', '三门峡', '山南', '遂宁', '四平', '商丘', '宿迁',
-#         '上饶', '汕头', '汕尾', '绍兴', '三亚', '邵阳', '沈阳', '十堰', '松原', '双鸭山', '深圳', '朔州', '宿州', '随州', '苏州', '石嘴山', '泰安', '塔城地区',
-#         '太仓', '铜川', '屯昌', '通化', '天津', '铁岭', '通辽', '铜陵', '吐鲁番地区', '铜仁地区', '唐山', '天水', '太原', '台州', '泰州', '文昌', '文登', '潍坊',
-#         '瓦房店', '威海', '乌海', '芜湖', '武汉', '吴江', '乌兰察布', '乌鲁木齐', '渭南', '万宁', '文山州', '武威', '无锡', '温州', '吴忠', '梧州', '五指山',
-#         '西安', '兴安盟', '许昌', '宣城', '襄阳', '孝感', '迪庆州', '锡林郭勒盟', '厦门', '西宁', '咸宁', '湘潭', '邢台', '新乡', '咸阳', '新余', '信阳', '忻州',
-#         '徐州', '雅安', '延安', '延边州', '宜宾', '盐城', '宜昌', '宜春', '银川', '运城', '伊春', '云浮', '阳江', '营口', '榆林', '玉林', '伊犁哈萨克州', '阳泉',
-#         '玉树州', '烟台', '鹰潭', '义乌', '宜兴', '玉溪', '益阳', '岳阳', '扬州', '永州', '淄博', '自贡', '珠海', '湛江', '镇江', '诸暨', '张家港', '张家界',
-#         '张家口', '周口', '驻马店', '章丘', '肇庆', '中山', '舟山', '昭通', '中卫', '张掖', '招远', '资阳', '遵义', '枣庄', '漳州', '郑州', '株洲']
-#
-#
-#         一共384个
 
 if __name__ == '__main__':
-    get_all_info_by_city('北京')
+    city_queue = Queue()
+    for i in get_city():
+        city_queue.put(i)
+
+    threads = [AQIThread(i, city_queue) for i in range(num_of_threads)]
+    for i in range(num_of_threads):
+        threads[i].start()

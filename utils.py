@@ -1,13 +1,20 @@
 import datetime
 import json
+import logging
 import random
 import execjs
+import filelock
 import xlrd
+import xlwt
 from lxml import etree
 import requests
 from xlutils3 import copy
 from config import *
+from proxy import get_proxy
 from usually_data import target_type, USER_AGENTS, years, month
+import pymysql as mdb
+
+logging.basicConfig(filename='apiStudy.log', level=logging.DEBUG, format=LOG_FORMAT, datefmt=DATE_FORMAT)
 
 
 def day_params(city, date_time, ctx):
@@ -42,9 +49,10 @@ def get_response(params):
     data = {
         'hd': params
     }
+    proxies = {}
     # 动态代理
     # headers, proxies = get_proxy()
-    html_info = requests.post(url, data=data, headers=headers)
+    html_info = requests.post(url, data=data, headers=headers, proxies=proxies)
     if html_info.status_code is 200:
         return html_info.text
     else:
@@ -57,6 +65,22 @@ def get_city():
     html = etree.HTML(html_info.text)  # 初始化生成一个XPath解析对象
     items = html.xpath('//div[@class="all"]//a/text()')
     return items
+
+
+def get_city_data():
+    url = city_url
+    html_info = requests.get(url)
+    result = []
+    html = etree.HTML(html_info.text)  # 初始化生成一个XPath解析对象
+    items = html.xpath('//div[@class="all"]//ul[@class="unstyled"]')
+    for i in items:
+        cityName = i.xpath('div/li/a/text()')
+        first_letter = i.xpath('div/b/text()')
+        for c in cityName:
+            result.append([c, first_letter[0][:-1]])
+    for k, v in enumerate(result):
+        result[k].append(k)
+    return result
 
 
 # 得到一个城市所有的历史数据
@@ -75,7 +99,7 @@ def get_all_info_by_city(city):
             if html_info is not None:
                 item = decode_info(html_info, ctx)
                 for i in item['result']['data']['items']:
-                    result.append(i)
+                    result.append(en_day_sdict_to_list(city, i))
     return result
 
 
@@ -90,9 +114,12 @@ def get_least_info_by_city(city):
     if html_info is not None:
         item = decode_info(html_info, ctx)
         last_num = len(item['result']['data']['items'])
+
         if last_num is 0:
-            return city, None
-        return city, item['result']['data']['items'][-1]
+            logging.info(city + '无最近数据或未更新')
+            return []
+        logging.info('获取' + city + str(item['result']['data']['items'][-1]['time_point']) + '数据')
+        return [en_day_sdict_to_list(city, item['result']['data']['items'][-1])]
 
 
 # 爬取某城市一年的日数据
@@ -122,29 +149,56 @@ def get_month_average_info_by_city(city):
     result = []
     date_time = ''  # 201805
     html_info = get_response(month_params(city, date_time, ctx))
-    print('爬取' + date_time + city)
     if html_info is not None:
         item = decode_info(html_info, ctx)
         for i in item['result']['data']['items']:
-            result.append(i)
+            result.append(en_month_dict_to_list(city, i))
+            logging.info('获取' + city + str(i['time_point']) + '的月平均数据')
     return result
 
 
-def write_excel(result, ci):
-    rb = xlrd.open_workbook('1.xls', formatting_info=True)
-    wbk = copy.copy(rb)
+def insert_db(result):
+    conn = mdb.connect(host='47.107.173.225', port=3306, user='root', passwd='root', db='openApiStudy')
+    cursor = conn.cursor()
+    cursor.executemany(
+        'INSERT INTO day_data(cityName,time_point,aqi,pm2_5,pm10,so2,no2,co,o3,rank,quality) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+        result)
+    conn.commit()
+    conn.close()
+
+
+def insert_month_db(result):
+    conn = mdb.connect(host='47.107.173.225', port=3306, user='root', passwd='root', db='openApiStudy')
+    cursor = conn.cursor()
+    cursor.executemany(
+        'INSERT INTO month_data(cityName,time_point,aqi,max_aqi,min_aqi,pm2_5,pm10,so2,no2,co,o3,rank,quality) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',
+        result)
+
+    conn.commit()
+    conn.close()
+
+
+def write_excel(result, ci, data_type):
+    # rb = xlrd.open_workbook('1.xls', formatting_info=True)
+    # wbk = xl_copy(rb)
+    wbk = xlwt.Workbook()
     sheet = wbk.add_sheet(ci)
-    for k, v in enumerate(target_type):
+    for k, v in enumerate(data_type):
         sheet.write(0, k, v)
     for k, v in enumerate(result):
-        sheet.write(k + 1, 0, v['time_point'])
-        sheet.write(k + 1, 1, v['aqi'])
-        sheet.write(k + 1, 2, v['pm2_5'])
-        sheet.write(k + 1, 3, v['pm10'])
-        sheet.write(k + 1, 4, v['so2'])
-        sheet.write(k + 1, 5, v['no2'])
-        sheet.write(k + 1, 6, v['co'])
-        sheet.write(k + 1, 7, v['o3'])
-        sheet.write(k + 1, 8, v['rank'])
-        sheet.write(k + 1, 9, v['quality'])
-    wbk.save('1.xls')
+        for k1, v1 in enumerate(data_type):
+            sheet.write(k + 1, k1, v[v1])
+    wbk.save('./day/' + ci + '.xls')
+
+
+def en_day_sdict_to_list(cityName, result):
+    return [cityName, result['time_point'], result['aqi'], result['pm2_5'], result['pm10'], result['so2'],
+            result['no2'], result['co'], result['o3'],
+            result['rank'], result['quality']]
+
+
+def en_month_dict_to_list(cityName, result):
+    return [cityName, result['time_point'], result['aqi'], result['max_aqi'], result['min_aqi'], result['pm2_5'],
+            result['pm10'], result['so2'],
+            result['no2'], result['co'], result['o3'],
+            result['rank'], result['quality']]

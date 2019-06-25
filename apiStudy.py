@@ -16,14 +16,13 @@ class AQIThread(threading.Thread):
         self.singal.set()
 
     def run(self):
-        while True:
-            if self.city_queue.empty():
-                break
-            else:
-                ci = self.city_queue.get()
-                result = get_year_info_by_city(year='2018', city=ci)
-                print(result)
-                # write_excel(result, ci)
+        while not self.city_queue.empty():
+            ci = self.city_queue.get()
+            result = get_month_average_info_by_city(city=ci)
+            print(result)
+            insert_month_db(result)
+            # insert_db(result)
+            # write_excel(result, ci)
 
     def pause(self):
         self.log_ctrl.AppendText("pause\n")
@@ -36,7 +35,9 @@ class AQIThread(threading.Thread):
 
 if __name__ == '__main__':
     city_queue = Queue()
-    for i in get_city():
+    citys = get_city()
+
+    for i in citys:
         city_queue.put(i)
 
     threads = [AQIThread(i, city_queue) for i in range(num_of_threads)]

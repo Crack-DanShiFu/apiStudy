@@ -20,7 +20,7 @@ class AQIThread(threading.Thread):
             ci = self.city_queue.get()
             result = get_month_average_info_by_city(city=ci)
             print(result)
-            insert_month_db(result)
+            #insert_month_db(result)
             # insert_db(result)
             # write_excel(result, ci)
 

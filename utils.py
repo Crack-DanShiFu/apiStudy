@@ -168,7 +168,7 @@ def insert_db(result):
 
 
 def insert_month_db(result):
-    conn = mdb.connect(host='47.107.173.225', port=3306, user='root', passwd='root', db='openApiStudy')
+    conn = mdb.connect(host='127.0.0.1', port=3306, user='root', passwd='root', db='openApiStudy')
     cursor = conn.cursor()
     cursor.executemany(
         'INSERT INTO month_data(cityName,time_point,aqi,max_aqi,min_aqi,pm2_5,pm10,so2,no2,co,o3,rank,quality) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)',

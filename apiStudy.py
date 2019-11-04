@@ -18,7 +18,7 @@ class AQIThread(threading.Thread):
     def run(self):
         while not self.city_queue.empty():
             ci = self.city_queue.get()
-            result = get_month_average_info_by_city(city=ci)
+            result = get_all_info_by_city(city=ci)
             print(result)
             #insert_month_db(result)
             # insert_db(result)

@@ -3,8 +3,8 @@ import time
 import hashlib
 
 # 个人中心获取orderno与secret 如果不用代理则不用设置
-orderno = "DT20190608165232Y5DenA70"
-secret = "59a7a0df437f4caae30d8b6335b8a043"
+orderno = ""
+secret = ""
 
 ip = "dynamic.xiongmaodaili.com"
 port = "8089"
